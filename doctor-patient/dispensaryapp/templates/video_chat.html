@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Chat</title>
+    <script defer src='https://sdk.twilio.com/js/video/releases/2.15.0/twilio-video.min.js'></script>
+
+
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+            }
+            #local-media, #remote-media {
+                width: 45%;
+                height: 300px;
+                border: 1px solid #ccc;
+                margin: 10px;
+                display: inline-block;
+                vertical-align: top;
+            }
+            video {
+                width: 100%;
+                height: 100%;
+            }
+            button {
+                padding: 10px 20px;
+                font-size: 16px;
+                margin: 20px 0;
+            }
+        </style>
+    </head>
+    <body>
+    
+        <h1>Twilio Video Chat</h1>
+        <button id="join-room">Join Room</button>
+        <div id="local-media"></div>
+        <div id="remote-media"></div>
+    
+        <script>
+            // Fetch the room name and token when the 'Join Room' button is clicked
+            document.getElementById('join-room').onclick = function () {
+                const roomName = "13"; // Replace with your room name or a dynamic value
+    
+                // Fetch the Twilio token from your server
+                fetch(`/token/${roomName}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const token = data.token;
+    
+                        // Connect to the Twilio Room with the fetched token
+                        return Twilio.Video.connect(token, { name: roomName });
+                    })
+                    .then(room => {
+                        console.log(`Connected to Room: ${room.name}`);
+    
+                        // Step 1: Handle the Local Participant's media
+                        handleLocalParticipant(room.localParticipant);
+    
+                        // Step 2: Handle already connected participants (remote media)
+                        room.participants.forEach(participant => {
+                            console.log(`Already connected: ${participant.identity}`);
+                            handleRemoteParticipant(participant);
+                        });
+    
+                        // Step 3: Handle new participants joining the room
+                        room.on('participantConnected', participant => {
+                            console.log(`Participant connected: ${participant.identity}`);
+                            handleRemoteParticipant(participant);
+                        });
+    
+                        // Step 4: Handle participants leaving the room
+                        room.on('participantDisconnected', participant => {
+                            console.log(`Participant disconnected: ${participant.identity}`);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error connecting to the room:', error);
+                    });
+            };
+    
+            // Function to handle the local participant's video and audio
+            function handleLocalParticipant(localParticipant) {
+                const localMediaContainer = document.getElementById('local-media');
+    
+                localParticipant.videoTracks.forEach(trackPublication => {
+                    const track = trackPublication.track;
+                    localMediaContainer.appendChild(track.attach());
+                });
+            }
+    
+            // Function to handle remote participants' media (video/audio)
+            function handleRemoteParticipant(participant) {
+                console.log(`Handling media for participant: ${participant.identity}`);
+    
+                // Subscribe to the participant's tracks
+                participant.tracks.forEach(publication => {
+                    if (publication.isSubscribed) {
+                        attachTrack(publication.track);
+                    }
+    
+                    // Attach any new tracks that get subscribed to later
+                    publication.on('subscribed', track => {
+                        attachTrack(track);
+                    });
+    
+                    publication.on('unsubscribed', track => {
+                        detachTrack(track);
+                    });
+                });
+    
+                // Listen for new tracks being published by this participant
+                participant.on('trackSubscribed', track => {
+                    attachTrack(track);
+                });
+    
+                participant.on('trackUnsubscribed', track => {
+                    detachTrack(track);
+                });
+            }
+    
+            // Function to attach a track (video or audio) to the remote media container
+            function attachTrack(track) {
+                const remoteMediaContainer = document.getElementById('remote-media');
+                remoteMediaContainer.appendChild(track.attach());
+            }
+    
+            // Function to detach (remove) a track from the DOM when a participant leaves
+            function detachTrack(track) {
+                track.detach().forEach(element => element.remove());
+            }
+        </script>
+    
+    </body>
+    </html>
+    

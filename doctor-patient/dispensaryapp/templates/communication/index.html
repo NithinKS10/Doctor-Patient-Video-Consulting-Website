@@ -1,0 +1,16 @@
+html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Chat</title>
+</head>
+<body>
+    <h1>Video Chat</h1>
+    <form action="{% url 'room' %}" method="post">
+        {% csrf_token %}
+        <label for="room-name">Room name:</label>
+        <input id="room-name" type="text" name="room_name" required>
+        <button type="submit">Enter room</button>
+    </form>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room {{ room_name }}</title>
+</head>
+<body>
+    <h2>Room: {{ room_name }}</h2>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+
+    <script>
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const roomName = "{{ room_name }}";
+        const chatSocket = new WebSocket('ws://' + window.location.host + '/ws/dispensaryapp/' + roomName + '/');
+        // Initialize PeerConnection
+        const peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]  // Google's STUN server
+        });
+
+        // Get local video and audio stream
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                // Show local video stream
+                localVideo.srcObject = stream;
+
+                // Add all tracks to the peer connection
+                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+            })
+            .catch(error => console.error('Error accessing media devices.', error));
+
+        // When remote track is received, show it in the remote video element
+        peerConnection.ontrack = event => {
+            remoteVideo.srcObject = event.streams[0];
+        };
+
+        // Handle ICE candidates and send them to the other peer via WebSocket
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                chatSocket.send(JSON.stringify({
+                    'message': {
+                        'type': 'candidate',
+                        'candidate': event.candidate
+                    }
+                }));
+            }
+        };
+
+        // WebSocket message handling
+        chatSocket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            const message = data['message'];
+
+            // Handle received messages
+            if (message.type === 'offer') {
+                // If an offer is received, set it as the remote description and create an answer
+                peerConnection.setRemoteDescription(new RTCSessionDescription(message))
+                    .then(() => peerConnection.createAnswer())
+                    .then(answer => peerConnection.setLocalDescription(answer))
+                    .then(() => {
+                        chatSocket.send(JSON.stringify({
+                            'message': peerConnection.localDescription
+                        }));
+                    });
+            } else if (message.type === 'answer') {
+                // If an answer is received, set it as the remote description
+                peerConnection.setRemoteDescription(new RTCSessionDescription(message));
+            } else if (message.type === 'candidate') {
+                // If an ICE candidate is received, add it to the peer connection
+                peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+            }
+        };
+
+        // Handle WebSocket connection close
+        chatSocket.onclose = function(e) {
+            console.error('Chat socket closed unexpectedly');
+        };
+
+        // Create and send an offer to the other peer
+        peerConnection.createOffer()
+            .then(offer => peerConnection.setLocalDescription(offer))
+            .then(() => {
+                chatSocket.send(JSON.stringify({
+                    'message': peerConnection.localDescription
+                }));
+            });
+
+    </script>
+</body>
+</html>
